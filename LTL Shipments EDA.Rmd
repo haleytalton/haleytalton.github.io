@@ -1,0 +1,274 @@
+---
+title: "LTL Shipments EDA"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(broom)
+library(dplyr)
+```
+
+```{r}
+library(xlsx)
+CLient_Data <- read.xlsx("LTL_Dataset.xlsx", 1, header = TRUE)
+```
+
+
+```{r}
+glimpse(CLient_Data)
+
+```
+
+Adding the zeros to the front of the zip codes that did not transfer from excel:
+
+```{r}
+Client2 <- transform(CLient_Data, OrigZip = str_pad(as.character(CLient_Data$OrigZip), width = 5, side = "left", pad = "0"), DestZip = str_pad(as.character(CLient_Data$DestZip), width = 5, side = "left", pad = "0") )
+
+
+```
+
+
+```{r}
+library(lubridate)
+
+Client3 <- transform(Client2, TruckloadActivityDate = ymd(Client2$TruckloadActivityDate), EarliestActualDeliveryDate = ymd(Client2$EarliestActualDeliveryDate))
+
+glimpse(Client3)
+```
+
+Adding a variable to represent cost per pound:
+```{r}
+Client4 <- Client3 %>% 
+  mutate(CostPerPound = (FreightCharge/SummaryActualWeight))
+```
+
+initial plotting to reveal any potential outliers:
+
+```{r}
+plot(Client4$SummaryActualWeight, Client4$FreightCharge)
+```
+We see there is an outlier. Looking at the data, we see that there is an entry with the weight of 400,000. We imagine this was a data entry error and remove the outlier so it will not affect the analysis 
+
+```{r}
+Client4 <- filter(Client4, SummaryActualWeight != 400000)
+
+ggplot(data = Client4, aes(x = Client4$SummaryActualWeight, y = Client4$FreightCharge)) + geom_point(colour = "darkblue") + geom_smooth(se=FALSE, colour = "black") + labs(title = "Weight vs. Freight Charge", x = "Weight(lbs)", y = "Freight Charge($)") + theme(axis.title = element_text(size = 12), plot.title = element_text(size = 15, face = "bold"))
+```
+
+Attempts at finding the lanes with highest/lowest cost per pound:
+
+```{r}
+Client4 %>%
+  group_by(OrigZip,DestZip) %>%
+  summarise(Avg_CostPerLb = round(mean(CostPerPound), 2)) %>%
+  arrange(desc(Avg_CostPerLb))
+```
+
+From the above data, we can see that three of the lanes have unusual avg cost per pound values. Investigating further by using a filter function to analyze those specific lanes. 
+
+```{r}
+Potential_Outliers <- Client4 %>% select(OrigZip, DestZip, SummaryActualWeight, FreightCharge) %>% filter(OrigZip == "33064", DestZip == "34758")
+
+head(Potential_Outliers)
+
+Potential_Outliers2 <- Client4 %>% select(OrigZip, DestZip, SummaryActualWeight, FreightCharge) %>% filter(OrigZip == "77020", DestZip == "44515")
+
+head(Potential_Outliers2)
+
+Potential_Outliers3 <- Client4 %>% select(OrigZip, DestZip, SummaryActualWeight, FreightCharge) %>% filter(OrigZip == "77020", DestZip == "08085")
+
+head(Potential_Outliers3)
+```
+
+We see that one of the SummaryActualWeight values in each lane is unusually low. 
+
+For lane 33064, 34758 there is a zero for one of the SummaryActualWeight values
+For lane 77020, 44515 there is only one entry and the SummaryActual weight value is a zero. 
+    (As this lane only has one entry, we intend to remove that row without impact to the findings, however if it can be corrected we can add the entry back in)
+
+For lane 77020, 08085 there are two entries. One of the entries has a SummaryActualWeight value of 44. I assume that this was a data entry error, probably meaning to be 44000, but will be removed until clarified. 
+
+We remove each of the outliers that are found and rerun the original code. 
+
+```{r}
+Client5 <- Client4 %>%
+  filter(SummaryActualWeight != 0, SummaryActualWeight != 44)
+
+Lane <- Client5 %>% 
+  group_by(OrigCity, OrigState, OrigZip,DestCity, DestState, DestZip) %>%
+  summarise(Avg_CostPerLb = round(mean(CostPerPound), 2)) %>%
+  arrange(desc(Avg_CostPerLb))
+
+Lane
+```
+```{r}
+library(kableExtra)
+
+Lane <- head(Lane, 3)
+
+Lane %>%
+   kbl() %>%
+  kable_classic_2("striped", full_width = F)
+ 
+```
+
+
+
+```{r}
+Client5 %>% 
+  group_by(OrigZip,DestZip) %>%
+  summarise(Avg_CostPerLb = round(mean(CostPerPound), 2)) %>%
+  ggplot(aes(x = Avg_CostPerLb)) + geom_histogram(binwidth = 0.01, color = "black", fill = "lightblue") + xlab("Average Cost/lb") + ylab("Number of Lanes")
+                                            
+
+```
+
+
+
+```{r}
+Lane2 <- Client5 %>% 
+  group_by(OrigCity, OrigState, OrigZip,DestCity, DestState, DestZip) %>%
+  summarise(Avg_CostPerLb = round(mean(CostPerPound),2)) %>%
+  arrange(Avg_CostPerLb)
+
+Lane2
+```
+```{r}
+Lane2 <- head(Lane2, 12)
+
+Lane2 %>%
+  kbl() %>%
+  kable_classic_2("striped", full_width = F)
+  
+```
+
+Investigating shipping modes:
+
+
+```{r}
+Client5 %>%
+  ungroup() %>%
+  group_by(Mode) %>%
+  summarise(Count = n()) %>%
+  ungroup()
+```
+visual for LTL argument: 
+ 
+```{r}
+plot(Client5$SummaryActualWeight, Client5$CostPerPound )
+```
+
+
+Showing that using LTL for smaller shipments could potentially save money: 
+
+```{r}
+LTL <- Client5 %>%
+  filter(SummaryActualWeight <= 10000)
+
+LTL %>% 
+  group_by(SummaryActualWeight, Mode) %>%
+  summarise(AvgCostperLb = mean(FreightCharge/SummaryActualWeight)) %>%
+  ggplot(aes(SummaryActualWeight, AvgCostperLb, color = Mode)) + geom_point() + labs(x = "Weight(lbs)", y = "Average Cost/lb") 
+  
+LTL %>% 
+  ungroup() %>%
+  ggplot(aes(SummaryActualWeight, CostPerPound, color = Mode)) + geom_point() + labs(x = "Weight(lbs)", y = "Cost/lb") 
+
+
+
+
+```
+
+
+```{r}
+Client5 %>%
+  group_by(SummaryActualWeight,Mode) %>%
+  summarise(AvgCostperLb = mean(FreightCharge/SummaryActualWeight)) %>%
+  arrange(SummaryActualWeight) %>% 
+  ungroup()
+```
+
+```{r}
+Client5 %>% 
+  group_by(OrigZip,DestZip, Mode) %>%
+  summarise(Avg_CostPerLb = round(mean(CostPerPound),2)) %>%
+  arrange(Avg_CostPerLb) %>%
+  ungroup()
+```
+
+Investigating accesorial charges:
+
+```{r}
+##accesorial investigation 
+
+Accesorial <- Client4 %>% 
+  filter(AccessorialOtherCharge > 0)
+
+Acc <- Accesorial %>%
+  group_by(OrigCity, OrigState, OrigZip, DestCity, DestState, DestZip) %>%
+  summarise(ExtraCharges = sum(AccessorialOtherCharge)) %>%
+  arrange(desc(ExtraCharges)) %>%
+  ungroup()
+
+Acc
+
+total_Accessorials <- sum(Accesorial$AccessorialOtherCharge)
+
+Acc <- head(Acc, 5)
+
+top5 <- sum(Acc$ExtraCharges)
+top5
+
+
+Acc %>% 
+  kbl() %>%
+  kable_classic_2("striped", full_width = F)
+  
+```
+
+```{r}
+Accesorial %>% 
+  filter(OrigZip == "06437", DestZip == "20723")
+```
+
+```{r}
+Client4 %>%
+  select(OrigZip, DestZip, AccessorialOtherCharge, X.405...Fuel.Surcharge,Accessorial) %>%
+  filter(OrigZip == "77020", DestZip == "78219")
+```
+
+```{r}
+Client5 %>%
+  select(OrigZip, OrigState, DestZip, DestState, SummaryActualWeight, Mode, FreightCharge, CostPerPound) %>%
+  filter(OrigZip == "90620" | DestZip == "90620")
+```
+```{r}
+Total_Freight_Spend <- sum(Client3$FreightCharge)
+
+Total_Freight_Spend
+
+Total_Overall_Spend <- sum(Client3$TotalCharges)
+
+Total_Overall_Spend
+
+Overall_AvgCostperLb <- mean(Client5$CostPerPound)
+
+Overall_AvgCostperLb
+```
+
+```{r}
+Client5 %>%
+  filter(OrigState == "CT" | OrigState == "NJ", DestState == "NJ" | DestState == "CT") %>%
+   group_by(OrigZip, DestZip) %>%
+  summarise(AvgCostperLb = mean(CostPerPound)) %>%
+  ggplot(aes(AvgCostperLb)) + geom_histogram(binwidth = 0.05, color = "black", fill = "darkblue") + labs(title = "Average Cost/lb Frequencies for NJ <-> CT Lanes", x = "Average Cost/lb", y = "Number of Lanes") + theme_classic() + theme(axis.title = element_text(size = 12), plot.title = element_text(size = 15, face = "bold"))
+  
+```
+
