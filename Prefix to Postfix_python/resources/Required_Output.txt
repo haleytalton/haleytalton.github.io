@@ -1,0 +1,54 @@
+Input: 
+-+ABC
+Output: 
+AB+C-
+
+Input: 
+-A+BC
+Output: 
+ABC+-
+
+Input: 
+$+-ABC+D-EF
+Output: 
+AB-C+DEF-+$
+
+Input: 
+-*A$B+C-DE*EF
+Output: 
+ABCDE-+$*EF*-
+
+Input: 
+**A+BC+C-BA
+Output: 
+ABC+*CBA-+*
+
+Input: 
+/A+BC +C*BA  
+Output: 
+Error: Incorrect number of operators or operands
+
+Input: 
+*-*-ABC+BA  
+Output: 
+Error: Incorrect number of operators or operands
+
+Input: 
+/+/A-BC-BA  
+Output: 
+Error: Incorrect number of operators or operands
+
+Input: 
+*$A+BC+C-BA 
+Output: 
+ABC+$CBA-+*
+
+Input: 
+//A+B0-C+BA
+Output: 
+Error: Invalid character in expression
+
+Input: 
+*$A^BC+C-BAOutput: 
+Error: Invalid character in expression
+
