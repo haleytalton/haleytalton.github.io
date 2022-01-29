@@ -1,0 +1,186 @@
+---
+title: "Time Series Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(itsmr)
+library(forecast)
+library(tseries)
+DATA <- ts(c(386.02,387.42,388.71
+,390.20
+,391.17
+,392.46
+,393.00
+,392.15
+,390.20
+,388.35
+,386.85
+,387.24
+,388.67
+,389.79
+,391.33
+,391.86
+,392.60
+,393.25
+,394.19
+,393.74
+,392.51
+,390.13
+,389.08
+,389.00
+,390.28
+,391.86
+,393.12
+,393.86
+,394.40
+,396.18
+,396.74
+,395.71
+,394.36
+,392.39
+,391.11
+,391.05
+,392.98
+,394.34
+,395.55
+,396.80
+,397.43
+,398.41
+,399.78
+,398.60
+,397.32
+,395.20
+,393.45
+,393.70
+,395.16
+,396.84
+,397.85
+,398.01
+,399.77
+,401.38
+,401.78
+,401.25
+,399.10
+,397.03
+,395.38
+,396.03
+,397.28
+,398.91
+,399.98
+,400.28
+,401.54
+,403.28
+,403.96
+,402.80
+,401.31
+,398.93
+,397.63
+,398.29
+,400.16
+,401.85
+,402.56
+,404.12
+,404.87
+,407.45
+,407.72
+,406.83
+,404.41
+,402.27
+,401.05
+,401.59
+,403.55
+,404.45
+,406.17
+,406.46
+,407.22
+,409.04
+,409.69
+,408.88
+,407.12
+,405.13
+,403.37
+,403.63
+,405.12
+,406.81
+,407.96
+,408.32
+,409.41
+,410.24
+,411.23
+,410.79
+,408.71
+,406.99
+,405.51
+,406.00
+,408.02
+,409.07
+,410.83
+,411.75
+,411.97
+,413.32
+,414.66
+,413.92
+,411.77
+,409.95
+,408.54, 408.53), frequency = 12, start = c(2009, 11), end = c(2019,10))
+summary(DATA)
+plotc(DATA)
+abline(reg=lm(DATA ~ time(DATA)))
+```
+```{r}
+lamda <- BoxCox.lambda(ee)
+lambda
+#value is 0.9071929, signifying we do not need to transform the data
+
+acf(DATA)
+# The ACF plot shows a strong correlation between the current observation and observation at a prior time step 
+pacf(DATA)
+# The PACF plot shows the relationship between an observed value and it's lag. The values in this graph become less significant after lag 2. This suggests to us that in the absence of differencing an AR (2) model should be used.
+
+#The ACF and PACF along with the plot confirm that our data is not stationary, it clearly has an upward trend. To confirm this let's try a Ljung-B
+
+
+#Null hypothesis: Independence in time series.
+Box.test(DATA, type = "Ljung-Box")
+#p-value of 2.2 e-16 we have sufficient evidence to reject the null, our time series is non-stationary. Let's figure out why.
+```
+
+```{r}
+plot(aggregate(DATA, FUN=mean))
+# Plot shows clear upward trend. 
+boxplot(DATA ~ cycle(DATA), main = "Manua Lao CO2 Levels by Month", ylab= "CO2 Levels", xlab= "Month", sub = "November 2009-October 2019")
+#Boxplots by month highlight seasonality component.
+seasonplot(DATA, col = rainbow(12))
+#Seasonality component over the years
+```
+
+```{r}
+DATA2 <- decompose(DATA)
+plot(DATA2)
+# Final plot exploring our data. Further confirms the upward trend and seasonality components in one visual.
+```
+
+
+```{r}
+ndiffs(DATA)
+#Number of differences needs to be 1
+auto.arima(DATA, D=1, stepwise = FALSE, approximation = FALSE)
+#Best model selected has following properties: (p=1, d=1, q=0) (P=0, D=1, Q=1) with season of 12
+#non-seasonal AR(1) term, 1 differencing term,1 seasonal diff,1 seasonal MA(1) term
+final<-arima(DATA, order=c(1,1,0), seasonal=c(0,1,1))
+checkresiduals(final)
+# All autocorrelations are within the threshold limits and the portmanteau test yields a large p-value, both of which suggest the residuals are white noise. :)
+```
+
+```{r}
+autoplot(forecast(final, h = 10))
+future95<- forecast(DATA, model = final, h= 1, level = c(90,99))
+print(future95)
+plot(future95)
+```
+
